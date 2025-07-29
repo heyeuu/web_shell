@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title> Web terminal</title>
+  <link rel="stylesheet" href="./src/style.css">
+  <link rel="icon" type="image/png" href="/Abolian.png">
+</head>
+
+<body class="bg-gray-100 text-gray-900 font-sans p-8 flex flex-col items-center justify-center min-h-screen">
+
+  <h1 class="text-4xl font-bold text-center mb-8 text-blue-700">mini Web terminal</h1>
+
+  <div class="max-w-xl w-full bg-white p-6 rounded-lg shadow-xl border border-gray-200">
+    <div id="terminal-container"
+      class="w-full h-64 bg-gray-900 rounded-lg overflow-hidden p-2 font-mono text-sm shadow-inner"></div>
+  </div>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+
+</html>

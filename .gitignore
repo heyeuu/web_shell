@@ -1,0 +1,52 @@
+# -----------------------------------------------------------------------------
+# Global Ignores for Monorepo (my_rust_web_app)
+# This file centralizes ignore rules for both frontend and backend projects.
+# -----------------------------------------------------------------------------
+
+# --- Common Build/Dependency Artifacts (Applies to both) ---
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# IDE specific files
+.vscode/          # Visual Studio Code settings (can be useful to share sometimes, but often ignored)
+.idea/            # IntelliJ IDEA settings
+*.iml             # IntelliJ IDEA module files
+
+# Environment variables
+.env
+.env.*
+
+# --- Global Rust Workspace Ignores ---
+# Rust compilation output for the entire workspace
+/target        
+
+# --- Frontend Specific Ignores (my_rust_web_app/frontend) ---
+# Node.js / npm
+/frontend/node_modules/ # Node.js dependencies
+/frontend/dist/         # Vite build output
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+/frontend/pnpm-debug.log*
+# Vite specific
+/frontend/.vite/
+
+# --- Backend Specific Ignores (my_rust_web_app/backend) ---
+# Rust / Cargo (Note: backend/target/ is now covered by /target/ at root)
+# If you *don't* have a root workspace Cargo.toml, you'd put /backend/target/ here.
+# But with a workspace, the root /target/ covers it.
+
+/backend/target/    
+
+# Rust backup files (from some editors)
+/backend/**/*.rs.bak
+/backend/**/src/*.backup
+
+# --- Other potential ignores (if applicable) ---
+# Editor swap files
+*~
+*.swp
+
+# Logs
+*.log
