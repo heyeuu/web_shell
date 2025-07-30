@@ -43,7 +43,11 @@ if (terminalContainer) {
     'echo',
     'clear',
     'about',
-    'pwd'
+    'pwd',
+    'whoami',
+    'cd',
+    'ls',
+    'heyeuuu'
   ];
 
   // --- WebSocket 客户端逻辑 ---
@@ -92,6 +96,8 @@ if (terminalContainer) {
         '  clear       - Clears the terminal screen\r\n' +
         '  about       - About this terminal\r\n' +
         '  pwd         - Prints working directory (dummy)\r\n' +
+        '  heyeuuu     - Bless for me\r\n' +
+        '  crush       - Ask about crush (dummy)\r\n' +
         '  (Many other commands will be handled by the backend!)\r\n';
 
       term.write(response);
@@ -118,15 +124,20 @@ if (terminalContainer) {
       term.write(prompt);
       return true;
     } else if (trimmedCommand === 'heyeuuu') {
-      response = 'suki~~~Bless for sheeeeee~\r\n';
+      response = 'suki~~~Bless for me~(￣∇￣)\r\n';
+      term.write(response);
+      term.write(prompt);
+      return true;
+    } else if (trimmedCommand === 'crush') {
+      response = 'What do you want to know ? (・∀・)\r\n';
       term.write(response);
       term.write(prompt);
       return true;
     }
     else {
-      response = `Unknown command: ${command}\r\n`;
-      term.write(response);
-      term.write(prompt);
+      // response = `Unknown command: ${command}\r\n`;
+      // term.write(response);
+      // term.write(prompt);
       // return true;
     }
     return false;
