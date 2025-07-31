@@ -1,37 +1,102 @@
+// backend/src/ws_logic.rs
 use axum::extract::ws::Message;
 use axum::extract::ws::WebSocket;
 use dirs;
 use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use shlex;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
-
 use tracing;
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum WebSocketResponse {
+    #[serde(rename = "output")]
+    Output(String),
+    #[serde(rename = "cwd_update")]
+    CwdUpdate(String),
+}
+
+// 清理函数：移除 Xterm.js 无法解析的控制字符（特别是 DEL 字符）
+fn clean_output(s: String) -> String {
+    s.chars()
+        .filter(|&c| {
+            // 过滤掉 ASCII 控制字符 (0-31) 和 DEL (127)
+            // 允许常见的可见字符，包括空格，以及换行符 \n 和回车符 \r
+            (c >= '\u{0020}' && c <= '\u{007e}') || // 可打印 ASCII 字符
+            c == '\n' || // 换行符
+            c == '\r' || // 回车符
+            (c >= '\u{0080}' && c != '\u{007f}') // 允许非 ASCII 的 UTF-8 字符 (非控制字符)
+        })
+        .collect()
+}
 
 pub async fn handle_socket(socket: WebSocket, peer: String) {
     let (mut sender, mut receiver) = socket.split();
 
+    // 初始 CWD，修正为根目录或你期望的默认路径
+    let mut current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+
+    // 欢迎消息
+    let welcome_msg = "Welcome to the Rust Web Terminal Backend!\r\n";
     sender
         .send(Message::Text(
-            "Welcome to the Rust Web Terminal Backend!".into(),
+            serde_json::to_string(&WebSocketResponse::Output(
+                clean_output(welcome_msg.to_string()), // 清理欢迎消息
+            ))
+            .unwrap()
+            .into(),
+        ))
+        .await
+        .expect("Failed to send welcome message");
+
+    // 初始 CWD 更新
+    sender
+        .send(Message::Text(
+            serde_json::to_string(&WebSocketResponse::CwdUpdate(
+                current_dir.display().to_string(),
+            ))
+            .unwrap()
+            .into(),
         ))
         .await
         .unwrap();
-
-    let mut current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/ws"));
 
     while let Some(msg) = receiver.next().await {
         match msg {
             Ok(msg) => match msg {
                 Message::Text(text) => {
                     tracing::info!("Received message from {}: {}", peer, text);
-                    let (response, new_cwd) = process_command(&text.trim(), &current_dir).await;
-                    current_dir = new_cwd;
 
-                    sender
-                        .send(Message::Text(response.into()))
-                        .await
-                        .expect("msg send failed")
+                    let (response_raw, new_cwd) = process_command(&text.trim(), &current_dir).await;
+
+                    if !response_raw.is_empty() {
+                        sender
+                            .send(Message::Text(
+                                serde_json::to_string(&WebSocketResponse::Output(clean_output(
+                                    response_raw,
+                                ))) // 清理命令输出
+                                .unwrap()
+                                .into(),
+                            ))
+                            .await
+                            .expect("Failed to send command output");
+                    }
+
+                    if new_cwd != current_dir {
+                        current_dir = new_cwd;
+                        sender
+                            .send(Message::Text(
+                                serde_json::to_string(&WebSocketResponse::CwdUpdate(
+                                    current_dir.display().to_string(),
+                                ))
+                                .unwrap()
+                                .into(),
+                            ))
+                            .await
+                            .expect("Failed to send CWD update");
+                    }
                 }
                 Message::Pong(_) => {
                     tracing::info!("Received Pong from {}", peer);
@@ -52,6 +117,7 @@ pub async fn handle_socket(socket: WebSocket, peer: String) {
     }
     tracing::info!("`{}` WebSocket connection closed.", peer);
 }
+
 async fn process_command(command_str: &str, current_dir: &Path) -> (String, PathBuf) {
     let parsed_command = shlex::split(command_str);
 
@@ -90,7 +156,7 @@ async fn process_command(command_str: &str, current_dir: &Path) -> (String, Path
             if args.is_empty() {
                 if let Some(home) = dirs::home_dir() {
                     new_cwd = home;
-                    response = format!("Changed directory to {}\r\n", new_cwd.display());
+                    response = "".to_string(); // **修正：cd 成功时返回空字符串**
                 } else {
                     response = "Error: Could not find home directory.\r\n".to_string();
                 }
@@ -107,7 +173,7 @@ async fn process_command(command_str: &str, current_dir: &Path) -> (String, Path
                 if let Ok(canonical_path) = resolved_path.canonicalize() {
                     if canonical_path.is_dir() {
                         new_cwd = canonical_path;
-                        response = format!("Changed directory to {}\r\n", new_cwd.display());
+                        response = "".to_string(); // **修正：cd 成功时返回空字符串**
                     } else {
                         response = format!(
                             "Error: {} is not a directory or does not exist.\r\n",
@@ -136,13 +202,14 @@ async fn process_command(command_str: &str, current_dir: &Path) -> (String, Path
             match command_builder.output().await {
                 Ok(output) => {
                     if output.status.success() {
-                        response = String::from_utf8_lossy(&output.stdout).to_string();
+                        response =
+                            clean_output(String::from_utf8_lossy(&output.stdout).to_string()); // 清理 stdout
                     } else {
-                        response = format!(
+                        response = clean_output(format!(
                             "Error executing {}: {}\r\n",
                             cmd,
                             String::from_utf8_lossy(&output.stderr)
-                        );
+                        )); // 清理 stderr
                     }
                 }
                 Err(e) => {
