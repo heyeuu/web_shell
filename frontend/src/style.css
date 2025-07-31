@@ -11,15 +11,18 @@ body {
     padding: 0;
     overflow: hidden; /* **关键**: 防止页面整体滚动 */
     box-sizing: border-box; /* 包含 padding/border 在元素的总宽高内 */
+    /* 移除 background-color: #1a202c; 因为 body 上有 Tailwind 的 bg-gray-100 */
+    /* 移除 font-family: monospace; 因为 body 上有 Tailwind 的 font-sans */
+    /* 移除 display: flex; justify-content: center; align-items: center; 因为 body 上有 Tailwind 的 flex flex-col h-screen overflow-hidden，并且有 flex-grow div */
 }
 
 /* **核心**: 终端容器固定在底部，左右边缘对齐视口 */
 #terminal-wrapper {
     /* 定位 */
     position: fixed; /* 相对于视口固定 */
-    bottom: 0;       /* 锚定到底部边缘 */
-    left: 0;         /* 锚定到左侧边缘 */
-    right: 0;        /* 锚定到右侧边缘 */
+    bottom: 0;        /* 锚定到底部边缘 */
+    left: 0;          /* 锚定到左侧边缘 */
+    right: 0;         /* 锚定到右侧边缘 */
     
     /* 宽度：铺满整个视口宽度 */
     width: 100%; /* 明确设定宽度为 100% */
@@ -32,8 +35,8 @@ body {
     z-index: 1000;
 
     /* 默认可见状态时的尺寸和可见性 */
-    height: 33vh;      /* 展开时的高度 (例如，视口高度的 1/3) */
-    min-height: 200px; /* 展开时的最小高度，防止过小 */
+    height: 33vh;     /* 展开时的高度 (例如，视口高度的 1/3) */
+    min-height: 200px; /* 展开时的高度，防止过小 */
     opacity: 1;        /* 完全可见 */
     pointer-events: auto; /* 可交互 */
 
@@ -47,14 +50,20 @@ body {
     
     /* 终端容器自身的内部边距，让内容不贴边 */
     padding: 0; /* 移除 #terminal-wrapper 自身的 padding，让 #terminal 来控制 */
+
+    /* 移除此处 Tailwind 相关的背景、边框、阴影等样式，因为它们可能由 #terminal 或其他元素控制 */
+    /* background-color: #1a202c; */
+    /* border: 1px solid #4a5568; */
+    /* box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); */
+    /* border-radius: 8px; */
 }
 
 /* 终端隐藏时的样式 */
 #terminal-wrapper.terminal-hidden {
-    height: 0;          /* 高度收缩为 0 */
-    min-height: 0;      /* 最小高度也为 0 */
-    opacity: 0;         /* 完全透明 */
-    padding-bottom: 0;  /* 移除底部内边距，使其完全收缩 */
+    height: 0;           /* 高度收缩为 0 */
+    min-height: 0;       /* 最小高度也为 0 */
+    opacity: 0;          /* 完全透明 */
+    padding-bottom: 0;   /* 移除底部内边距，使其完全收缩 */
     pointer-events: none; /* 隐藏时不可点击 */
 }
 
@@ -63,13 +72,12 @@ body {
     width: 100%;
     height: 100%; /* **关键**: 填充 #terminal-wrapper 的所有可用高度 */
     
-    /* 将原 Tailwind 样式移到这里，并强化控制 */
-    background-color: #1a202c; /* bg-gray-900 */
-    /* **核心修改**: 移除或设置为 0 */
-    border-radius: 0;          /* 移除圆角 */
-    padding: 0.5rem;           /* p-2 */
-    font-family: monospace;    /* font-mono */
-    font-size: 0.875rem;       /* text-sm (14px) */
+    /* 将原 Tailwind 样式移到到这里，并强化控制，同时与 Xterm.js 主题设置保持一致 */
+    background-color: #1a202c; /* bg-gray-900，与 Xterm.js 主题保持一致 */
+    border-radius: 0;            /* 移除圆角 */
+    padding: 0.5rem;             /* p-2 */
+    /* font-family: monospace; */ /* 由 Xterm.js theme 控制 */
+    /* font-size: 0.875rem; */ /* 由 Xterm.js theme 控制 */
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-xl */
     
     /* 允许内部滚动，但隐藏滚动条本身 */
@@ -84,11 +92,13 @@ body {
 }
 
 .xterm-viewport {
-    -ms-overflow-style: none;  /* 针对旧版 Edge 和 IE */
-    scrollbar-width: none;  /* 针对 Firefox */
+    -ms-overflow-style: none;    /* 针对旧版 Edge 和 IE */
+    scrollbar-width: none;    /* 针对 Firefox */
 }
 
 /* 调整主要内容区的底部外边距，以避免被展开的终端遮挡 */
+/* 只有当 #terminal-wrapper 不是隐藏状态时才应用这个 margin-bottom */
+/* 这个选择器现在完美匹配你的 index.html 结构 */
 body:has(#terminal-wrapper:not(.terminal-hidden)) > .flex-grow {
     margin-bottom: 33vh; /* 确保 main-content 不会被终端遮挡 */
 }
