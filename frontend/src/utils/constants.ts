@@ -2,6 +2,6 @@
 
 export const COMMAND_LEXICON = [
     'help', 'echo', 'clear', 'about', 'pwd', 'whoami', 'cd', 'ls',
-    'heyeuuu', 'birthday', 'crush', 'hello', 'creeper', 'exit', 'logout', 'login',
-    'cat', 'touch', 'mkdir', 'rm', 'rmdir', 'cp', 'mv',
+    'birthday', 'heyeuuu', 'creeper', // 同步后端的新自定义命令
+    // 'exit', 'logout', 'login', 'cat', 'touch', 'mkdir', 'rm', 'rmdir', 'cp', 'mv', // 暂时移除未实现的命令
 ];

@@ -1,8 +1,9 @@
 // frontend/src/api/webSocketService.ts
 
+// **修复 6: WebSocketMessage 定义为接口，字段为可选**
 interface WebSocketMessage {
-    output?: string;
-    cwd_update?: string;
+    output?: string;    // 注意这里是可选的
+    cwd_update?: string; // 注意这里是可选的
 }
 
 export class WebSocketService {
@@ -12,7 +13,6 @@ export class WebSocketService {
     private onErrorCallback: ((error: Event) => void) | null = null;
 
     constructor() {
-        // 绑定上下文，确保回调函数中的 this 指向 WebSocketService 实例
         this.handleMessage = this.handleMessage.bind(this);
         this.handleClose = this.handleClose.bind(this);
         this.handleError = this.handleError.bind(this);
@@ -26,6 +26,7 @@ export class WebSocketService {
         }
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // 确保端口与后端监听的端口一致 (3000)
         const wsUrl = `${wsProtocol}//${window.location.hostname}:3000/ws`;
 
         this.ws = new WebSocket(wsUrl);
@@ -68,18 +69,17 @@ export class WebSocketService {
 
     private handleOpen(): void {
         console.log('WebSocket connection opened.');
-        // 这里不需要写欢迎信息，由 main.ts 协调 TerminalService 处理
     }
 
     private handleMessage(event: MessageEvent): void {
         try {
+            // **修复 7: 即使 output 或 cwd_update 为 None，JSON.parse 也能正常工作**
             const message: WebSocketMessage = JSON.parse(event.data);
             if (this.onMessageCallback) {
                 this.onMessageCallback(message);
             }
         } catch (e) {
             console.error('Failed to parse WebSocket message:', e, event.data);
-            // 错误信息可以传递给终端服务显示
             if (this.onMessageCallback) {
                 this.onMessageCallback({ output: `\r\nError parsing message from backend: ${e instanceof Error ? e.message : String(e)}\r\n` });
             }
