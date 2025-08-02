@@ -31,7 +31,7 @@ webSocketService.onMessage((message) => {
         terminalService.write('\r\n');
       }
     }
-    if (message.cwd_update !== undefined) {
+    if (message.cwd_update !== undefined && message.cwd_update !== null) {
       terminalService.setCwd(message.cwd_update);
     }
     // **核心修复点 2: 确保在收到后端消息并处理完毕后，才写入提示符**

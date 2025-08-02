@@ -1,7 +1,6 @@
 // backend/src/ws_logic.rs
 use axum::extract::ws::Message;
 use axum::extract::ws::WebSocket;
-use dirs;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use shlex; // 用于解析命令字符串，处理引号和空格
@@ -16,6 +15,8 @@ pub struct WebSocketResponse {
     pub output: Option<String>,
     pub cwd_update: Option<String>,
 }
+
+const SANDBOX_ROOT: &str = "/home/heyeuuu/Workspace/secretes/happy_birthday";
 
 // **修复 2: 命令处理函数返回的结果结构体**
 // 内部使用这个结构体来封装命令处理结果，方便统一发送。
@@ -46,11 +47,12 @@ fn clean_output(s: String) -> String {
 pub async fn handle_socket(socket: WebSocket, peer: String) {
     let (mut sender, mut receiver) = socket.split();
 
+    let sandbox_root_path = PathBuf::from(SANDBOX_ROOT);
     // 初始 CWD，修正为根目录或你期望的默认路径
-    let mut current_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    let mut current_dir = sandbox_root_path.clone();
     // 确保 current_dir 是绝对路径
     if !current_dir.is_absolute() {
-        current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+        current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from(SANDBOX_ROOT));
     }
 
     // **修复 3: 首次连接时发送欢迎信息和当前CWD，使用新的 WebSocketResponse 格式**
@@ -161,121 +163,46 @@ async fn process_command(command_str: &str, current_dir: &Path) -> CommandResult
     let mut new_cwd_opt: Option<PathBuf> = None; // 用于存储可能的 CWD 更新
     let response_output: String;
 
+    if cmd == "sudo" || cmd == "su" || cmd == "passwd" {
+        return CommandResult {
+            output: "Error: Permission denied. This command is not allowed.\r\n".to_string(),
+            new_cwd: None,
+        };
+    }
+
     match cmd.as_str() {
         "help" => {
-            response_output = "\r\nAvailable Commands:\r\n\
-            \x1b[32m  help\x1b[0m        - Show list of available commands\r\n\
-            \x1b[32m  echo <text>\x1b[0m - Echoes the text you provide\r\n\
-            \x1b[32m  about\x1b[0m       - About this backend\r\n\
-            \x1b[32m  pwd\x1b[0m         - Prints working directory\r\n\
-            \x1b[32m  ls\x1b[0m          - List directory contents\r\n\
-            \x1b[32m  cd <path>\x1b[0m   - Change current directory\r\n\
-            \x1b[32m  whoami\x1b[0m      - Print the user name associated with the current effective user ID\r\n\
-            \r\nCustom Commands:\r\n\
-            \x1b[32m  birthday\x1b[0m    - Check if it's your birthday\r\n\
-            \x1b[32m  heyeuuu\x1b[0m     - A special greeting\r\n\
-            \x1b[32m  creeper\x1b[0m     - A friendly sound\r\n"
-                .to_string();
-        }
-        "cd" => {
-            if args.is_empty() {
-                if let Some(home) = dirs::home_dir() {
-                    new_cwd_opt = Some(home);
-                    response_output = "".to_string(); // **cd 成功时返回空字符串**
-                } else {
-                    response_output = "Error: Could not find home directory.\r\n".to_string();
-                }
-            } else {
-                let target_path_str = args[0];
-                let target_path = PathBuf::from(target_path_str);
-
-                let resolved_path = if target_path.is_absolute() {
-                    target_path
-                } else {
-                    current_dir.join(target_path)
-                };
-
-                match resolved_path.canonicalize() {
-                    Ok(canonical_path) => {
-                        if canonical_path.is_dir() {
-                            new_cwd_opt = Some(canonical_path);
-                            response_output = "".to_string(); // **cd 成功时返回空字符串**
-                        } else {
-                            response_output = format!(
-                                "Error: '{}' is not a directory or does not exist.\r\n",
-                                target_path_str
-                            );
-                        }
-                    }
-                    Err(_) => {
-                        response_output = format!(
-                            "Error: Path '{}' is invalid or does not exist.\r\n",
-                            target_path_str
-                        );
-                    }
-                }
-            }
-        }
-        "pwd" => {
-            response_output = format!("{}\r\n", current_dir.display());
-        }
-        "ls" | "whoami" => {
-            let mut command_builder = Command::new(&cmd); // 使用引用
-            command_builder.current_dir(current_dir);
-
-            for arg in &args {
-                command_builder.arg(arg);
-            }
-
-            match command_builder.output().await {
-                Ok(output) => {
-                    if output.status.success() {
-                        response_output = String::from_utf8_lossy(&output.stdout).to_string();
-                    } else {
-                        response_output = format!(
-                            "Error executing {}: {}\r\n",
-                            cmd,
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                    }
-                }
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::NotFound {
-                        response_output = format!(
-                            "Error: Command '{}' not found. Is it installed and in your PATH?\r\n",
-                            cmd
-                        );
-                    } else {
-                        response_output = format!("Failed to execute {} command: {}\r\n", cmd, e);
-                    }
-                }
-            }
+            response_output = handle_help_command();
         }
         "echo" => {
-            let text_to_echo = args.join(" ");
-            response_output = format!("{text_to_echo}\r\n");
+            response_output = handle_echo_command(&args);
+        }
+        "cd" => {
+            let (output, new_cwd) = handle_cd_command(&args, current_dir).await;
+            response_output = output;
+            new_cwd_opt = new_cwd;
+        }
+        "pwd" => {
+            response_output = handle_pwd_command(current_dir);
+        }
+        "ls" => {
+            response_output = handle_ls_command(&args, current_dir).await;
+        }
+        "whoami" => {
+            response_output = handle_whoami_command().await;
         }
         "about" => {
-            response_output = "This is the Rust Axum backend for your Web terminal.\r\n\
-                        It handles commands sent via WebSocket.\r\n"
-                .to_string();
+            response_output = "This is a safe, sandboxed Rust Axum web terminal.\r\nIt only supports a limited set of commands to ensure safety.\r\n".to_string();
         }
         // --- 自定义命令 ---
         "birthday" => {
-            let current_date = chrono::Local::now().format("%m-%d").to_string();
-            if current_date == "07-30" {
-                // 根据当前日期 (July 30) 设置示例生日
-                response_output = "Happy Birthday, Admin! 🎉🎂\r\n".to_string();
-            } else {
-                response_output = "It's not your birthday yet. 😔\r\n".to_string();
-            }
+            response_output = handle_birthday_command();
         }
         "heyeuuu" => {
-            let name = if args.is_empty() { "Yuuu" } else { args[0] };
-            response_output = format!("Suki~~~Bless for {}~~~~~~\r\n", name);
+            response_output = handle_heyeuuu_command(&args);
         }
         "creeper" => {
-            response_output = "Sss... Boom! (just kidding, I'm friendly)\r\n".to_string();
+            response_output = handle_creeper_command();
         }
         // ... 添加更多自定义命令 ...
         _ => response_output = format!("Unknown command: {}\r\n", command_str),
@@ -284,4 +211,169 @@ async fn process_command(command_str: &str, current_dir: &Path) -> CommandResult
         output: response_output,
         new_cwd: new_cwd_opt,
     }
+}
+fn handle_help_command() -> String {
+    "\r\nAvailable Safe Commands:\r\n\
+    \x1b[32m  help\x1b[0m        - Show this help message.\r\n\
+    \x1b[32m  echo <text>\x1b[0m - Echoes the text you provide.\r\n\
+    \x1b[32m  pwd\x1b[0m         - Prints working directory.\r\n\
+    \x1b[32m  cd <path>\x1b[0m   - Change current directory.\r\n\
+    \x1b[32m  ls\x1b[0m          - List directory contents.\r\n\
+    \x1b[32m  whoami\x1b[0m      - Print the user name.\r\n\
+    \x1b[32m  about\x1b[0m       - About this terminal.\r\n\
+    \r\nCustom Commands:\r\n\
+    \x1b[32m  birthday\x1b[0m    - Check if it's your birthday.\r\n\
+    \x1b[32m  heyeuuu\x1b[0m     - A special greeting.\r\n\
+    \x1b[32m  creeper\x1b[0m     - A friendly sound.\r\n"
+        .to_string()
+}
+
+fn handle_echo_command(args: &[&str]) -> String {
+    format!("{}\r\n", args.join(" "))
+}
+
+async fn handle_cd_command(args: &[&str], current_dir: &Path) -> (String, Option<PathBuf>) {
+    let mut new_cwd_opt: Option<PathBuf> = None;
+    let response_output: String;
+    let sandbox_root_path = PathBuf::from(SANDBOX_ROOT);
+
+    if args.is_empty() {
+        new_cwd_opt = Some(sandbox_root_path);
+        response_output = "".to_string();
+    } else {
+        let target_path_str = args[0];
+        let target_path = PathBuf::from(target_path_str);
+
+        let resolved_path = if target_path.is_absolute() {
+            if target_path.starts_with(&sandbox_root_path) {
+                target_path
+            } else {
+                response_output = format!(
+                    "Error: Cannot access '{}' outside the sandbox.\r\n",
+                    target_path_str
+                );
+                return (response_output, None);
+            }
+        } else {
+            current_dir.join(target_path)
+        };
+
+        match resolved_path.canonicalize() {
+            Ok(canonical_path) => {
+                if canonical_path.is_dir() && canonical_path.starts_with(&sandbox_root_path) {
+                    new_cwd_opt = Some(canonical_path);
+                    response_output = "".to_string();
+                } else if !canonical_path.starts_with(&sandbox_root_path) {
+                    response_output =
+                        "Error: Cannot access path outside the sandbox.\r\n".to_string();
+                } else {
+                    response_output = format!(
+                        "Error: '{}' is not a directory or does not exist.\r\n",
+                        target_path_str
+                    );
+                }
+            }
+            Err(_) => {
+                response_output = format!(
+                    "Error: Path '{}' is invalid or does not exist.\r\n",
+                    target_path_str
+                );
+            }
+        }
+    }
+    (response_output, new_cwd_opt)
+}
+
+fn handle_pwd_command(current_dir: &Path) -> String {
+    format!("{}\r\n", current_dir.display())
+}
+
+async fn handle_ls_command(args: &[&str], current_dir: &Path) -> String {
+    let mut command_builder = Command::new("ls");
+    let sandbox_root_path = PathBuf::from(SANDBOX_ROOT);
+
+    command_builder.current_dir(current_dir);
+
+    let mut safe_args: Vec<PathBuf> = Vec::new();
+    for arg in args {
+        if arg.starts_with('-') {
+            command_builder.arg(arg);
+            continue;
+        }
+
+        let target_path = PathBuf::from(arg);
+        let resolved_path = if target_path.is_absolute() {
+            target_path
+        } else {
+            current_dir.join(target_path)
+        };
+
+        if let Ok(canonical_path) = resolved_path.canonicalize() {
+            if canonical_path.starts_with(&sandbox_root_path) {
+                safe_args.push(canonical_path);
+            } else {
+                return format!(
+                    "Error: Cannot access path '{}' outside the sandbox.\r\n",
+                    arg
+                );
+            }
+        } else {
+            return format!("Error: Path '{}' is invalid or does not exist.\r\n", arg);
+        }
+    }
+    if safe_args.is_empty() {
+        // 不需要添加任何路径参数，因为 command_builder 已经设置了工作目录
+    } else {
+        // 添加所有沙箱内安全的路径参数
+        for path in safe_args {
+            command_builder.arg(path);
+        }
+    }
+    match command_builder.output().await {
+        Ok(output) => {
+            if output.status.success() {
+                String::from_utf8_lossy(&output.stdout).to_string()
+            } else {
+                format!(
+                    "Error executing ls: {}\r\n",
+                    String::from_utf8_lossy(&output.stderr)
+                )
+            }
+        }
+        Err(e) => format!("Failed to execute ls command: {}\r\n", e),
+    }
+}
+async fn handle_whoami_command() -> String {
+    // **注意：这里同样调用了系统命令 whoami**。
+    // 为了完全安全，可以返回一个硬编码的字符串，如 "web_user" 或 "sandbox_user"。
+    // 这样可以避免泄露服务器的真实用户名。
+    // 例如：return "web_user\r\n".to_string();
+    match Command::new("whoami").output().await {
+        Ok(output) => {
+            if output.status.success() {
+                String::from_utf8_lossy(&output.stdout).to_string()
+            } else {
+                "Error getting user info.\r\n".to_string()
+            }
+        }
+        Err(_) => "Error getting user info.\r\n".to_string(),
+    }
+}
+
+fn handle_birthday_command() -> String {
+    let current_date = chrono::Local::now().format("%m-%d").to_string();
+    if current_date == "08-06" {
+        "Happy Birthday, heyeuuu! 🎉🎂\r\n".to_string()
+    } else {
+        "It's not my birthday yet. Is it yours?\r\n".to_string()
+    }
+}
+
+fn handle_heyeuuu_command(args: &[&str]) -> String {
+    let name = if args.is_empty() { "heyeuuu" } else { args[0] };
+    format!("Suki~~~Bless for {}~~~\r\n", name)
+}
+
+fn handle_creeper_command() -> String {
+    "Sss... Boom! (just kidding, I'm friendly) \r\n".to_string()
 }
