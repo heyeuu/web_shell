@@ -94,38 +94,7 @@ export class InputHandler {
         }
 
         if (charCode === 9) { // Tab key for completion
-            const now = Date.now();
-            const isContinuousTab = (now - this.lastTabTime < this.TAB_COOLDOWN) && this.tabCompletionCandidates.length > 0;
-            this.lastTabTime = now;
-
-            if (!isContinuousTab) {
-                this.tabCompletionCandidates = this.commandLexicon.filter(cmd =>
-                    cmd.toLowerCase().startsWith(this.currentLine.toLowerCase())
-                );
-                this.tabCompletionIndex = 0;
-            }
-
-            if (this.tabCompletionCandidates.length === 0) {
-                this.writeText('\x07'); // Bell character
-            } else if (this.tabCompletionCandidates.length === 1) {
-                const completion = this.tabCompletionCandidates[0];
-                this.writeText(completion.substring(this.currentLine.length));
-                this.currentLine = completion;
-            } else {
-                const currentCompletion = this.tabCompletionCandidates[this.tabCompletionIndex];
-                this.rewriteCurrentLine(); // 清除并重写当前输入行
-
-                if (!isContinuousTab) {
-                    this.writeText(this.currentLine); // 重写当前行内容
-                    this.writeText('\r\n' + this.tabCompletionCandidates.join('  ') + '\r\n'); // 显示所有候选项
-                    this.rewriteCurrentLine(); // 再次重写当前输入行，让光标回到正确位置
-                }
-
-                this.writeText(currentCompletion.substring(this.currentLine.length)); // 补全命令
-                this.currentLine = currentCompletion;
-
-                this.tabCompletionIndex = (this.tabCompletionIndex + 1) % this.tabCompletionCandidates.length;
-            }
+            this.handleTabCompletion();
             return;
         }
 
@@ -150,5 +119,85 @@ export class InputHandler {
         this.tabCompletionCandidates = [];
         this.tabCompletionIndex = 0;
         this.lastTabTime = 0;
+    }
+
+    private findCommonPrefix(words: string[]): string {
+        if (!words || words.length === 0) {
+            return '';
+        }
+        let prefix = words[0];
+        for (let i = 0; i < words.length; i++) {
+            while (words[i].indexOf(prefix) !== 0) {
+                prefix = prefix.substring(0, prefix.length - 1);
+                if (prefix === '') {
+                    return '';
+                }
+            }
+        }
+        return prefix;
+    }
+
+    private handleTabCompletion(): void {
+        const now = Date.now();
+        const isContinuousTab = (now - this.lastTabTime < this.TAB_COOLDOWN) && this.tabCompletionCandidates.length > 0;
+        this.lastTabTime = now;
+
+        const currentWord = this.currentLine.trim();
+
+        if (!isContinuousTab) {
+            this.tabCompletionCandidates = this.commandLexicon.filter(cmd => cmd.toLocaleLowerCase().startsWith(currentWord.toLocaleLowerCase()));
+            this.tabCompletionIndex = 0;
+        }
+
+        if (this.tabCompletionCandidates.length === 0) {
+            this.writeText('\x07'); // 响铃，表示没有补全
+            return;
+        }
+
+        if (this.tabCompletionCandidates.length === 1) {
+            const completion = this.tabCompletionCandidates[0];
+            const textToAppend = completion.substring(this.currentLine.length);
+            const highlighted = `\x1b[33m${textToAppend}\x1b[0m`;
+
+            this.writeText(highlighted);
+            this.currentLine = completion;
+            this.resetTabCompletion();
+            return;
+        }
+
+        if (isContinuousTab) {
+            this.tabCompletionIndex = (this.tabCompletionIndex + 1) % this.tabCompletionCandidates.length;
+
+            const completion = this.tabCompletionCandidates[this.tabCompletionIndex];
+            const textToAppend = completion.substring(currentWord.length);
+
+            this.currentLine = completion;
+
+            this.term.write('\x1b[2K\r');
+            this.term.write(this.terminalService.getPromptString() + this.currentLine);
+
+            const candidatesDisplay = this.tabCompletionCandidates.map((cmd, i) => {
+                return i === this.tabCompletionIndex ? `\x1b[1m\x1b[4m${cmd}\x1b[0m` : cmd;
+            }).join('  ');
+            this.term.write('\r\n' + candidatesDisplay + '\r\n');
+
+            // 重写当前行（再次显示 prompt 和 currentLine）
+            this.rewriteCurrentLine();
+
+            return;
+        } else {
+            const commonPrefix = this.findCommonPrefix(this.tabCompletionCandidates);
+            if (commonPrefix.length > currentWord.length) {
+                const textToAppend = commonPrefix.substring(currentWord.length);
+                this.writeText(textToAppend);
+                this.currentLine = commonPrefix;
+                return;
+            }
+        }
+        const originalLine = this.currentLine;
+        this.writeText('\x1b[2K\r'); // 清除当前行
+        this.writeText(this.terminalService.getPromptString());
+        this.writeText('\r\n' + this.tabCompletionCandidates.join('  ') + '\r\n');
+        this.rewriteCurrentLine();
     }
 }
